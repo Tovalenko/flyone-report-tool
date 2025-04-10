@@ -20,7 +20,7 @@ translations = []
 if uploaded_excel:
     df = pd.read_excel(uploaded_excel, sheet_name=None)
     sheet_names = list(df.keys())
-    selected_sheet = st.selectbox("📂 Choose Excel sheet", sheet_names)
+    selected_sheet = st.selectbox("📑 Choose Excel sheet", sheet_names)
     data = df[selected_sheet]
 
     data.columns = data.columns.str.strip()  # clean column names
@@ -46,7 +46,7 @@ if uploaded_excel:
 
                         try:
                             translated = translator.translate(original)
-                            summarized = translated.strip()  # Placeholder: could apply AI summarization here
+                            summarized = translated.strip()
                         except Exception:
                             summarized = "[Թարգմանությունը ձախողվեց]"
 
@@ -59,7 +59,7 @@ if uploaded_excel:
                             "Translation": new_text
                         })
 
-                if st.button("📅 Export Translated Reports to Excel"):
+                if st.button("📥 Export Translated Reports to Excel"):
                     export_df = pd.DataFrame(translations)
                     export_df.to_excel("translated_reports.xlsx", index=False)
                     with open("translated_reports.xlsx", "rb") as file:
@@ -75,16 +75,15 @@ if uploaded_excel:
 def generate_word_from_scratch(translations, start_date, end_date):
     doc = Document()
 
-    sections = {
-        "Տեխնիկական": "Տեխնիկական զեկույցներ՝",
-        "Թռիչք": "Թռիչքային զեկույցներ՝",
-        "Վերգետնյա": "Վերգետնյա սպասարկում/Նստեցման հետ կապված խնդիրներ՝",
-        "Բողոք": "Ուղևորների բողոքներ",
-        "աղտոտ": "Օդանավի աղտոտվածության վերաբերյալ զեկույցներ՝",
-        "այլ": "Այլ խնդիրներ"
+    section_titles = {
+        "Ground Handling": "Վերգետնյա սպասարկում/Նստեցման հետ կապված խնդիրներ՝",
+        "Technical": "Տեխնիկական զեկույցներ՝",
+        "Catering": "Քեյթերինգ",
+        "Other": "Այլ զեկույցներ",
+        "Cleaning": "Օդանավի աղտոտվածության վերաբերյալ զեկույցներ՝"
     }
 
-    for key, header in sections.items():
+    for report_type_en, header in section_titles.items():
         doc.add_paragraph(header)
         table = doc.add_table(rows=1, cols=4)
         table.style = 'Table Grid'
@@ -95,14 +94,12 @@ def generate_word_from_scratch(translations, start_date, end_date):
         hdr_cells[3].text = 'Թարգմանված տեքստ'
 
         for entry in translations:
-            translated = entry["Translation"]
-            if key in translated.lower():
+            if entry["Type"] == report_type_en:
                 row_cells = table.add_row().cells
                 row_cells[0].text = str(entry["Aircraft"]) if pd.notna(entry["Aircraft"]) else ""
                 row_cells[1].text = str(entry["Flight Number"]) if pd.notna(entry["Flight Number"]) else ""
                 row_cells[2].text = entry["Date"].strftime("%Y-%m-%d %H:%M") if entry["Date"] else ""
-                row_cells[3].text = translated.strip()
-
+                row_cells[3].text = entry["Translation"].strip()
 
         doc.add_paragraph("\n")
 
