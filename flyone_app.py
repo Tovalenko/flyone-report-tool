@@ -1,10 +1,11 @@
 import streamlit as st
 import pandas as pd
-from googletrans import Translator
+from deep_translator import LibreTranslateTranslator
 from datetime import datetime
 
 st.set_page_config(page_title="Flyone Report Tool", layout="wide")
-translator = Translator()
+
+translator = LibreTranslateTranslator(source='auto', target='hy')
 
 st.title("🛫 Flyone Report Tool (Web Version)")
 
@@ -17,37 +18,48 @@ if uploaded_excel:
     sheet_names = list(df.keys())
     selected_sheet = st.selectbox("Choose sheet", sheet_names)
     data = df[selected_sheet]
-    
+
     if 'Date & Time of Event (UTC)' in data.columns:
         data['Date & Time of Event (UTC)'] = pd.to_datetime(data['Date & Time of Event (UTC)'], errors='coerce')
         filtered = data[
             (data['Date & Time of Event (UTC)'] >= pd.to_datetime(start_date)) &
             (data['Date & Time of Event (UTC)'] <= pd.to_datetime(end_date))
         ]
-        
+
         if not filtered.empty:
             st.success(f"✅ Found {len(filtered)} reports between selected dates.")
-            translated_texts = []
 
-            for idx, row in filtered.iterrows():
-                original = str(row.get("Details", ""))
-                st.markdown("---")
-                st.markdown(f"**✈️ Aircraft:** {row.get('Aircraft Registration', '')}")
-                st.markdown(f"**📅 Date:** {row.get('Date & Time of Event (UTC)')}")
+            translations = []
 
-                try:
-                    translated = translator.translate(original, dest="hy").text
-                except Exception:
-                    translated = "[Թարգմանությունը ձախողվեց]"
-                
-                new_text = st.text_area(f"📝 Translation for report {idx}", translated, key=f"trans_{idx}")
-                translated_texts.append(new_text)
-            
-            if st.button("📥 Export Translations"):
-                output_df = filtered.copy()
-                output_df["Translated Details (HY)"] = translated_texts
-                output_df.to_excel("translated_reports.xlsx", index=False)
-                st.success("✅ File saved as translated_reports.xlsx")
+            grouped = filtered.groupby(['Aircraft Registration', 'Type of report'])
+
+            for (aircraft, report_type), group in grouped:
+                st.markdown(f"### ✈️ {aircraft} — 🗂️ {report_type}")
+                for idx, row in group.iterrows():
+                    original = str(row.get("Details", ""))
+                    st.markdown(f"**📄 Original:** {original}")
+
+                    try:
+                        translated = translator.translate(original)
+                    except Exception as e:
+                        translated = "[Թարգմանությունը ձախողվեց]"
+
+                    new_text = st.text_area(f"✏️ Edit Translation [{idx}]", translated, key=f"edit_{idx}")
+                    translations.append({
+                        "Aircraft": aircraft,
+                        "Type": report_type,
+                        "Date": row.get("Date & Time of Event (UTC)"),
+                        "Flight Number": row.get("Flight Number"),
+                        "Original": original,
+                        "Translation": new_text
+                    })
+
+            if st.button("📥 Export Translated Reports"):
+                export_df = pd.DataFrame(translations)
+                export_df.to_excel("translated_reports.xlsx", index=False)
+                st.success("✅ Translations saved as translated_reports.xlsx")
+                with open("translated_reports.xlsx", "rb") as file:
+                    st.download_button("⬇️ Download File", file, file_name="translated_reports.xlsx")
         else:
             st.warning("No reports found in selected date range.")
     else:
