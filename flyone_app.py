@@ -1,11 +1,11 @@
 import streamlit as st
 import pandas as pd
-from deep_translator import LibreTranslateTranslator
+from deep_translator import GoogleTranslator
 from datetime import datetime
 
 st.set_page_config(page_title="Flyone Report Tool", layout="wide")
 
-translator = LibreTranslateTranslator(source='auto', target='hy')
+translator = GoogleTranslator(source='auto', target='hy')
 
 st.title("🛫 Flyone Report Tool (Web Version)")
 
