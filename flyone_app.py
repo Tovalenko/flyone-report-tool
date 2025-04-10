@@ -75,3 +75,56 @@ if uploaded_excel:
             st.warning("No reports found in selected date range.")
     else:
         st.error("❌ 'Date & Time of Event (UTC)' column not found.")
+from docx import Document
+import io
+import os
+
+def insert_into_word(translations, template_path, start_date, end_date):
+    doc = Document(template_path)
+    section_map = {
+        "Տեխնիկական": "Տեխնիկական զեկույցներ՝",
+        "Թռիչք": "Թռիչքային զեկույցներ՝",
+        "Վերգետնյա": "Վերգետնյա սպասարկում/Նստեցման հետ կապված խնդիրներ՝",
+        "Բողոք": "Ուղևորների բողոքներ",
+        "աղտոտ": "Օդանավի աղտոտվածության վերաբերյալ զեկույցներ՝",
+        "այլ": "Այլ խնդիրներ"
+    }
+
+    for paragraph in doc.paragraphs:
+        for key, title in section_map.items():
+            if title.strip() in paragraph.text.strip():
+                idx = doc.paragraphs.index(paragraph)
+                for i, table in enumerate(doc.tables):
+                    if doc.paragraphs.index(doc.paragraphs[idx + 1]) < doc.paragraphs.index(table._element.getparent()):
+                        target_table = table
+                        break
+                else:
+                    continue
+
+                for entry in translations:
+                    text = entry["Translation"]
+                    if key in text.lower():
+                        row_cells = target_table.add_row().cells
+                        row_cells[0].text = entry["Aircraft"]
+                        row_cells[1].text = entry["Flight Number"] or ""
+                        row_cells[2].text = entry["Date"].strftime("%Y-%m-%d %H:%M") if entry["Date"] else ""
+                        row_cells[3].text = text.strip()
+                break
+
+    # Save file in memory
+    output = io.BytesIO()
+    output_name = f"Translated_Report_{start_date.strftime('%d.%m.%y')}-{end_date.strftime('%d.%m.%y')}.docx"
+    doc.save(output)
+    output.seek(0)
+    return output, output_name
+
+
+# Add this button where others are
+if translations and st.button("📝 Export to Word Template"):
+    try:
+        template_path = "template/Զեկույցների ցանկ.docx"
+        word_file, word_filename = insert_into_word(translations, template_path, start_date, end_date)
+        st.download_button("⬇️ Download Word Report", word_file, file_name=word_filename)
+        st.success("✅ Word document generated successfully.")
+    except Exception as e:
+        st.error(f"❌ Failed to create Word file: {e}")
