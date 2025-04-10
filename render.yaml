@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: flyone-report-tool
+    runtime: python
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "streamlit run flyone_app.py"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.10
