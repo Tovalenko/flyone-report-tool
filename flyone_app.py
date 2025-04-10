@@ -2,9 +2,11 @@ import streamlit as st
 import pandas as pd
 from deep_translator import GoogleTranslator
 from datetime import datetime
+from docx import Document
+from docx.shared import Inches
+import io
 
 st.set_page_config(page_title="Flyone Report Tool", layout="wide")
-
 translator = GoogleTranslator(source='auto', target='hy')
 
 st.title("🛫 Flyone Report Tool (Web Version)")
@@ -13,22 +15,18 @@ uploaded_excel = st.file_uploader("📁 Upload Excel File", type=["xlsx"])
 start_date = st.date_input("📅 Start Date")
 end_date = st.date_input("📅 End Date")
 
+translations = []
+
 if uploaded_excel:
     df = pd.read_excel(uploaded_excel, sheet_name=None)
     sheet_names = list(df.keys())
-    selected_sheet = st.selectbox("📑 Choose Excel sheet", sheet_names)
+    selected_sheet = st.selectbox("📂 Choose Excel sheet", sheet_names)
     data = df[selected_sheet]
 
-    # Clean column names
-    data.columns = data.columns.str.strip()
-    
-    # Debug: Show actual column names (optional)
-    # st.write("Columns found:", data.columns.tolist())
+    data.columns = data.columns.str.strip()  # clean column names
 
     if 'Date & Time of Event (UTC)' in data.columns:
         data['Date & Time of Event (UTC)'] = pd.to_datetime(data['Date & Time of Event (UTC)'], errors='coerce')
-
-        # Filter by selected dates
         filtered = data[
             (data['Date & Time of Event (UTC)'] >= pd.to_datetime(start_date)) &
             (data['Date & Time of Event (UTC)'] <= pd.to_datetime(end_date))
@@ -36,9 +34,7 @@ if uploaded_excel:
 
         if not filtered.empty:
             st.success(f"✅ Found {len(filtered)} reports between selected dates.")
-            translations = []
 
-            # Check required columns exist
             if 'Aircraft Registration' in filtered.columns and 'Type of report' in filtered.columns:
                 grouped = filtered.groupby(['Aircraft Registration', 'Type of report'])
 
@@ -50,38 +46,36 @@ if uploaded_excel:
 
                         try:
                             translated = translator.translate(original)
-                        except Exception as e:
-                            translated = "[Թարգմանությունը ձախողվեց]"
+                            summarized = translated.strip()  # Placeholder: could apply AI summarization here
+                        except Exception:
+                            summarized = "[Թարգմանությունը ձախողվեց]"
 
-                        new_text = st.text_area(f"✏️ Edit Translation [{idx}]", translated, key=f"edit_{idx}")
+                        new_text = st.text_area(f"✏️ Edit Translation [{idx}]", summarized, key=f"edit_{idx}")
                         translations.append({
                             "Aircraft": aircraft,
                             "Type": report_type,
                             "Date": row.get("Date & Time of Event (UTC)"),
                             "Flight Number": row.get("Flight Number"),
-                            "Original": original,
                             "Translation": new_text
                         })
 
-                if st.button("📥 Export Translated Reports"):
+                if st.button("📅 Export Translated Reports to Excel"):
                     export_df = pd.DataFrame(translations)
                     export_df.to_excel("translated_reports.xlsx", index=False)
-                    st.success("✅ Translations saved as translated_reports.xlsx")
                     with open("translated_reports.xlsx", "rb") as file:
-                        st.download_button("⬇️ Download File", file, file_name="translated_reports.xlsx")
+                        st.download_button("⬇️ Download Excel", file, file_name="translated_reports.xlsx")
             else:
                 st.error("❌ Required columns missing: 'Aircraft Registration' or 'Type of report'")
         else:
             st.warning("No reports found in selected date range.")
     else:
         st.error("❌ 'Date & Time of Event (UTC)' column not found.")
-from docx import Document
-import io
-import os
 
-def insert_into_word(translations, template_path, start_date, end_date):
-    doc = Document(template_path)
-    section_map = {
+
+def generate_word_from_scratch(translations, start_date, end_date):
+    doc = Document()
+
+    sections = {
         "Տեխնիկական": "Տեխնիկական զեկույցներ՝",
         "Թռիչք": "Թռիչքային զեկույցներ՝",
         "Վերգետնյա": "Վերգետնյա սպասարկում/Նստեցման հետ կապված խնդիրներ՝",
@@ -90,41 +84,34 @@ def insert_into_word(translations, template_path, start_date, end_date):
         "այլ": "Այլ խնդիրներ"
     }
 
-    for paragraph in doc.paragraphs:
-        for key, title in section_map.items():
-            if title.strip() in paragraph.text.strip():
-                idx = doc.paragraphs.index(paragraph)
-                for i, table in enumerate(doc.tables):
-                    if doc.paragraphs.index(doc.paragraphs[idx + 1]) < doc.paragraphs.index(table._element.getparent()):
-                        target_table = table
-                        break
-                else:
-                    continue
+    for key, header in sections.items():
+        doc.add_paragraph(header)
+        table = doc.add_table(rows=1, cols=4)
+        table.style = 'Table Grid'
+        hdr_cells = table.rows[0].cells
+        hdr_cells[0].text = 'Օդանավ'
+        hdr_cells[1].text = 'Թռիչք N'
+        hdr_cells[2].text = 'Ամսաթիվ'
+        hdr_cells[3].text = 'Թարգմանված տեքստ'
 
-                for entry in translations:
-                    text = entry["Translation"]
-                    if key in text.lower():
-                        row_cells = target_table.add_row().cells
-                        row_cells[0].text = entry["Aircraft"]
-                        row_cells[1].text = entry["Flight Number"] or ""
-                        row_cells[2].text = entry["Date"].strftime("%Y-%m-%d %H:%M") if entry["Date"] else ""
-                        row_cells[3].text = text.strip()
-                break
+        for entry in translations:
+            translated = entry["Translation"]
+            if key in translated.lower():
+                row_cells = table.add_row().cells
+                row_cells[0].text = entry["Aircraft"]
+                row_cells[1].text = entry["Flight Number"] or ""
+                row_cells[2].text = entry["Date"].strftime("%Y-%m-%d %H:%M") if entry["Date"] else ""
+                row_cells[3].text = translated.strip()
 
-    # Save file in memory
+        doc.add_paragraph("\n")
+
     output = io.BytesIO()
-    output_name = f"Translated_Report_{start_date.strftime('%d.%m.%y')}-{end_date.strftime('%d.%m.%y')}.docx"
+    filename = f"Translated_Report_{start_date.strftime('%d.%m.%y')}-{end_date.strftime('%d.%m.%y')}.docx"
     doc.save(output)
     output.seek(0)
-    return output, output_name
+    return output, filename
 
-
-# Add this button where others are
-if translations and st.button("📝 Export to Word Template"):
-    try:
-        template_path = "template/Զեկույցների ցանկ.docx"
-        word_file, word_filename = insert_into_word(translations, template_path, start_date, end_date)
-        st.download_button("⬇️ Download Word Report", word_file, file_name=word_filename)
-        st.success("✅ Word document generated successfully.")
-    except Exception as e:
-        st.error(f"❌ Failed to create Word file: {e}")
+if translations and st.button("📝 Generate Word Report"):
+    word_file, word_name = generate_word_from_scratch(translations, start_date, end_date)
+    st.download_button("⬇️ Download Word File", word_file, file_name=word_name)
+    st.success("✅ Word document created successfully.")
