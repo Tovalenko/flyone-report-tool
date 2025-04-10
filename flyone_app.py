@@ -98,10 +98,11 @@ def generate_word_from_scratch(translations, start_date, end_date):
             translated = entry["Translation"]
             if key in translated.lower():
                 row_cells = table.add_row().cells
-                row_cells[0].text = entry["Aircraft"]
-                row_cells[1].text = entry["Flight Number"] or ""
+                row_cells[0].text = str(entry["Aircraft"]) if pd.notna(entry["Aircraft"]) else ""
+                row_cells[1].text = str(entry["Flight Number"]) if pd.notna(entry["Flight Number"]) else ""
                 row_cells[2].text = entry["Date"].strftime("%Y-%m-%d %H:%M") if entry["Date"] else ""
                 row_cells[3].text = translated.strip()
+
 
         doc.add_paragraph("\n")
 
