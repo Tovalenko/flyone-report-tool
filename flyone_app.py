@@ -36,10 +36,10 @@ if uploaded_excel:
             st.success(f"✅ Found {len(filtered)} reports between selected dates.")
 
             if 'Aircraft Registration' in filtered.columns and 'Type of report' in filtered.columns:
-                grouped = filtered.groupby(['Aircraft Registration', 'Type of report'])
+                grouped = filtered.groupby(['Type of report', 'Aircraft Registration'])
 
-                for (aircraft, report_type), group in grouped:
-                    st.markdown(f"### ✈️ {aircraft} — 🗂️ {report_type}")
+                for (report_type, aircraft), group in grouped:
+                    st.markdown(f"### 🗂️ {report_type} — ✈️ {aircraft}")
                     for idx, row in group.iterrows():
                         original = str(row.get("Details", ""))
                         st.markdown(f"**📄 Original:** {original}")
@@ -83,18 +83,27 @@ def generate_word_from_scratch(translations, start_date, end_date):
         "Cleaning": "Օդանավի աղտոտվածության վերաբերյալ զեկույցներ՝"
     }
 
+    grouped = {}
+    for entry in translations:
+        report_type = entry["Type"]
+        aircraft = entry["Aircraft"]
+        grouped.setdefault(report_type, {}).setdefault(aircraft, []).append(entry)
+
     for report_type_en, header in section_titles.items():
         doc.add_paragraph(header)
-        table = doc.add_table(rows=1, cols=4)
-        table.style = 'Table Grid'
-        hdr_cells = table.rows[0].cells
-        hdr_cells[0].text = 'Օդանավ'
-        hdr_cells[1].text = 'Թռիչք N'
-        hdr_cells[2].text = 'Ամսաթիվ'
-        hdr_cells[3].text = 'Թարգմանված տեքստ'
 
-        for entry in translations:
-            if entry["Type"] == report_type_en:
+        aircraft_groups = grouped.get(report_type_en, {})
+        for aircraft, entries in aircraft_groups.items():
+            doc.add_paragraph(f"✈️ {aircraft}")
+            table = doc.add_table(rows=1, cols=4)
+            table.style = 'Table Grid'
+            hdr_cells = table.rows[0].cells
+            hdr_cells[0].text = 'Օդանավ'
+            hdr_cells[1].text = 'Թռիչք N'
+            hdr_cells[2].text = 'Ամսաթիվ'
+            hdr_cells[3].text = 'Թարգմանված տեքստ'
+
+            for entry in entries:
                 row_cells = table.add_row().cells
                 row_cells[0].text = str(entry["Aircraft"]) if pd.notna(entry["Aircraft"]) else ""
                 row_cells[1].text = str(entry["Flight Number"]) if pd.notna(entry["Flight Number"]) else ""
