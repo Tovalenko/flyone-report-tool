@@ -90,7 +90,8 @@ def generate_word_from_scratch(translations, start_date, end_date):
         grouped.setdefault(report_type, {}).setdefault(aircraft, []).append(entry)
 
     for report_type_en, header in section_titles.items():
-        doc.add_paragraph(header)
+        total_count = sum(len(v) for v in grouped.get(report_type_en, {}).values())
+        doc.add_paragraph(f"{header} - {total_count}")
 
         aircraft_groups = grouped.get(report_type_en, {})
         for aircraft, entries in aircraft_groups.items():
