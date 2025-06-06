@@ -3,7 +3,6 @@ import pandas as pd
 from deep_translator import GoogleTranslator
 from datetime import datetime
 from docx import Document
-from docx.shared import Inches
 import io
 
 st.set_page_config(page_title="Flyone Report Tool", layout="wide")
@@ -35,7 +34,7 @@ if uploaded_excel:
         if not filtered.empty:
             st.success(f"✅ Found {len(filtered)} reports between selected dates.")
 
-            if 'Aircraft Registration' in filtered.columns and 'Type of report' in filtered.columns:
+            if {'Aircraft Registration', 'Type of report'}.issubset(filtered.columns):
                 grouped = filtered.groupby(['Type of report', 'Aircraft Registration'])
 
                 for (report_type, aircraft), group in grouped:
@@ -56,6 +55,8 @@ if uploaded_excel:
                             "Type": report_type,
                             "Date": row.get("Date & Time of Event (UTC)"),
                             "Flight Number": row.get("Flight Number"),
+                            "Departure": row.get("Departure"),
+                            "Destination": row.get("Destination"),
                             "Translation": new_text
                         })
 
@@ -70,7 +71,6 @@ if uploaded_excel:
             st.warning("No reports found in selected date range.")
     else:
         st.error("❌ 'Date & Time of Event (UTC)' column not found.")
-
 
 def generate_word_from_scratch(translations, start_date, end_date):
     doc = Document()
@@ -100,16 +100,35 @@ def generate_word_from_scratch(translations, start_date, end_date):
             table.style = 'Table Grid'
             hdr_cells = table.rows[0].cells
             hdr_cells[0].text = 'Օդանավ'
-            hdr_cells[1].text = 'Թռիչք N'
+            hdr_cells[1].text = 'Թռիչք N / Ուղղություն'
             hdr_cells[2].text = 'Ամսաթիվ'
             hdr_cells[3].text = 'Թարգմանված տեքստ'
+
+            tech_report_counter = 1
 
             for entry in entries:
                 row_cells = table.add_row().cells
                 row_cells[0].text = str(entry["Aircraft"]) if pd.notna(entry["Aircraft"]) else ""
-                row_cells[1].text = str(entry["Flight Number"]) if pd.notna(entry["Flight Number"]) else ""
-                row_cells[2].text = entry["Date"].strftime("%Y-%m-%d %H:%M") if entry["Date"] else ""
-                row_cells[3].text = entry["Translation"].strip()
+
+                # Combine Flight Number + Departure + Destination
+                flight_number = str(entry.get("Flight Number", "") or "")
+                dep = str(entry.get("Departure", "") or "")
+                dest = str(entry.get("Destination", "") or "")
+                flight_info = flight_number
+                if dep and dest:
+                    flight_info += f" / {dep}-{dest}"
+                row_cells[1].text = flight_info.strip()
+
+                # Date
+                date_str = entry["Date"].strftime("%Y-%m-%d %H:%M") if entry["Date"] else ""
+                row_cells[2].text = date_str
+
+                # Translation + Report Number for Technical
+                text = entry["Translation"].strip()
+                if report_type_en == "Technical":
+                    text = f"Report-{tech_report_counter}: {text}"
+                    tech_report_counter += 1
+                row_cells[3].text = text
 
         doc.add_paragraph("\n")
 
