@@ -11,18 +11,18 @@ translator = GoogleTranslator(source='auto', target='hy')
 st.title("🛫 Flyone Report Tool (Web Version)")
 
 uploaded_excel = st.file_uploader("📁 Upload Excel File", type=["xlsx"])
-start_date = st.date_input("📅 Start Date")
-end_date = st.date_input("📅 End Date")
+start_date = st.date_input("🗕 Start Date")
+end_date = st.date_input("🗕 End Date")
 
 translations = []
 
 if uploaded_excel:
     df = pd.read_excel(uploaded_excel, sheet_name=None)
     sheet_names = list(df.keys())
-    selected_sheet = st.selectbox("📑 Choose Excel sheet", sheet_names)
+    selected_sheet = st.selectbox("📁 Choose Excel sheet", sheet_names)
     data = df[selected_sheet]
 
-    data.columns = data.columns.str.strip()  # clean column names
+    data.columns = data.columns.str.strip()
 
     if 'Date & Time of Event (UTC)' in data.columns:
         data['Date & Time of Event (UTC)'] = pd.to_datetime(data['Date & Time of Event (UTC)'], errors='coerce')
@@ -38,7 +38,8 @@ if uploaded_excel:
                 grouped = filtered.groupby(['Type of report', 'Aircraft Registration'])
 
                 for (report_type, aircraft), group in grouped:
-                    st.markdown(f"### 🗂️ {report_type} — ✈️ {aircraft}")
+                    similar_count = len(group)
+                    st.markdown(f"### 📂 {report_type} — ✈️ {aircraft}")
                     for idx, row in group.iterrows():
                         original = str(row.get("Details", ""))
                         st.markdown(f"**📄 Original:** {original}")
@@ -47,7 +48,7 @@ if uploaded_excel:
                             translated = translator.translate(original)
                             summarized = translated.strip()
                         except Exception:
-                            summarized = "[Թարգմանությունը ձախողվեց]"
+                            summarized = "[Թարգմանությունն ձախողվեց]"
 
                         new_text = st.text_area(f"✏️ Edit Translation [{idx}]", summarized, key=f"edit_{idx}")
                         translations.append({
@@ -57,10 +58,13 @@ if uploaded_excel:
                             "Flight Number": row.get("Flight Number"),
                             "Departure": row.get("Departure"),
                             "Destination": row.get("Destination"),
-                            "Translation": new_text
+                            "Report ID": row.get("Report ID"),
+                            "Translation": new_text,
+                            "Status": row.get("Status"),
+                            "Similar Count": similar_count
                         })
 
-                if st.button("📥 Export Translated Reports to Excel"):
+                if st.button("📅 Export Translated Reports to Excel"):
                     export_df = pd.DataFrame(translations)
                     export_df.to_excel("translated_reports.xlsx", index=False)
                     with open("translated_reports.xlsx", "rb") as file:
@@ -76,11 +80,11 @@ def generate_word_from_scratch(translations, start_date, end_date):
     doc = Document()
 
     section_titles = {
-        "Ground Handling": "Վերգետնյա սպասարկում/Նստեցման հետ կապված խնդիրներ՝",
-        "Technical": "Տեխնիկական զեկույցներ՝",
+        "Ground Handling": "Վերգետնյա սպասարկում/Նստեցման հետ կապված խնտիրներ՝",
+        "Technical": "Կեղկնիկական զեկույթներ՝",
         "Catering": "Քեյթերինգ",
-        "Other": "Այլ զեկույցներ",
-        "Cleaning": "Օդանավի աղտոտվածության վերաբերյալ զեկույցներ՝"
+        "Other": "Այլ զեկույթներ",
+        "Cleaning": "Օդանավի աղտոտվածության վերաբերու զեկույթներ՝"
     }
 
     grouped = {}
@@ -96,39 +100,37 @@ def generate_word_from_scratch(translations, start_date, end_date):
         aircraft_groups = grouped.get(report_type_en, {})
         for aircraft, entries in aircraft_groups.items():
             doc.add_paragraph(f"✈️ {aircraft}")
-            table = doc.add_table(rows=1, cols=4)
+            table = doc.add_table(rows=1, cols=7)
             table.style = 'Table Grid'
             hdr_cells = table.rows[0].cells
             hdr_cells[0].text = 'Օդանավ'
-            hdr_cells[1].text = 'Թռիչք N / Ուղղություն'
-            hdr_cells[2].text = 'Ամսաթիվ'
-            hdr_cells[3].text = 'Թարգմանված տեքստ'
-
-            tech_report_counter = 1
+            hdr_cells[1].text = 'Զեկույց N'
+            hdr_cells[2].text = 'Զեկույց / Report'
+            hdr_cells[3].text = 'Ամսայթ / Date'
+            hdr_cells[4].text = 'Ուղղույն / Չռիչքի համար / Destination / Flight Number'
+            hdr_cells[5].text = 'Զեկույցների քանակ'
+            hdr_cells[6].text = 'Կարգավիփակ'
 
             for entry in entries:
                 row_cells = table.add_row().cells
-                row_cells[0].text = str(entry["Aircraft"]) if pd.notna(entry["Aircraft"]) else ""
+                row_cells[0].text = str(entry.get("Aircraft", ""))
 
-                # Combine Flight Number + Departure + Destination
-                flight_number = str(entry.get("Flight Number", "") or "")
+                report_id = str(entry.get("Report ID", "")).strip() if report_type_en == "Technical" else ""
+                row_cells[1].text = report_id
+
+                row_cells[2].text = entry.get("Translation", "").strip()
+
+                date = entry.get("Date")
+                row_cells[3].text = date.strftime("%Y-%m-%d %H:%M") if pd.notna(date) else ""
+
+                fn = str(entry.get("Flight Number", "") or "")
                 dep = str(entry.get("Departure", "") or "")
                 dest = str(entry.get("Destination", "") or "")
-                flight_info = flight_number
-                if dep and dest:
-                    flight_info += f" / {dep}-{dest}"
-                row_cells[1].text = flight_info.strip()
+                route = f"{fn} / {dep}-{dest}" if dep and dest else fn
+                row_cells[4].text = route.strip()
 
-                # Date
-                date_str = entry["Date"].strftime("%Y-%m-%d %H:%M") if entry["Date"] else ""
-                row_cells[2].text = date_str
-
-                # Translation + Report Number for Technical
-                text = entry["Translation"].strip()
-                if report_type_en == "Technical":
-                    text = f"Report-{tech_report_counter}: {text}"
-                    tech_report_counter += 1
-                row_cells[3].text = text
+                row_cells[5].text = str(entry.get("Similar Count", ""))
+                row_cells[6].text = str(entry.get("Status", ""))
 
         doc.add_paragraph("\n")
 
